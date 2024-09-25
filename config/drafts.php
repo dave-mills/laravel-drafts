@@ -1,6 +1,11 @@
 <?php
 // config for Oddvalue/LaravelDrafts
 return [
+    /*
+     * Should draftableRelations be cloned when creating a new draft? When false, related entries will be cloned to published versions, but not to drafts.
+     */
+    'clone_relations' => false,
+
     'revisions' => [
         'keep' => 10,
     ],

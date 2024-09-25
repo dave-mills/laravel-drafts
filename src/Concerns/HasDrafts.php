@@ -166,7 +166,7 @@ trait HasDrafts
     {
         $published = $this->revisions()->published()->first();
 
-        if (! $published || $this->is($published)) {
+        if (!$published || $this->is($published)) {
             $this->{$this->getPublishedAtColumn()} ??= now();
             $this->{$this->getIsPublishedColumn()} = true;
             $this->setCurrent();
@@ -193,6 +193,7 @@ trait HasDrafts
             $published->saveQuietly();
 
             $this->replicateAndAssociateDraftableRelations($published);
+
         });
 
         $this->{$this->getIsPublishedColumn()} = false;
@@ -202,6 +203,7 @@ trait HasDrafts
         $this->shouldCreateRevision = false;
     }
 
+
     public function replicateAndAssociateDraftableRelations(Model $published): void
     {
         collect($this->getDraftableRelations())->each(function (string $relationName) use ($published) {
@@ -209,6 +211,12 @@ trait HasDrafts
             switch (true) {
                 case $relation instanceof HasOne:
                     if ($related = $this->{$relationName}) {
+
+                        // If related models are cloned to drafts, we first need to remove existing related entries
+                        if (config('drafts.clone_relations')) {
+                            $published->{$relationName}()->delete();
+                        }
+
                         $replicated = $related->replicate();
 
                         $method = method_exists($replicated, 'getDraftableAttributes')
@@ -220,6 +228,12 @@ trait HasDrafts
 
                     break;
                 case $relation instanceof HasMany:
+
+                    // If related models are cloned to drafts, we first need to remove existing related entries
+                    if (config('drafts.clone_relations')) {
+                        $published->{$relationName}()->delete();
+                    }
+
                     $this->{$relationName}()->get()->each(function ($model) use ($published, $relationName) {
                         $replicated = $model->replicate();
 
@@ -233,7 +247,8 @@ trait HasDrafts
                     break;
                 case $relation instanceof MorphToMany:
                 case $relation instanceof BelongsToMany:
-                    $published->{$relationName}()->sync($this->{$relationName}()->pluck('id'));
+
+                    $published->{$relationName}()->sync($this->{$relationName}->pluck('id'));
 
                     break;
             }
@@ -258,6 +273,11 @@ trait HasDrafts
         $draft->setCurrent();
 
         if ($saved = $draft->save($options)) {
+
+            if (config('drafts.clone_relations')) {
+                $this->replicateAndAssociateDraftableRelations($draft);
+            }
+
             $this->fireModelEvent('drafted');
             $this->pruneRevisions();
         }
@@ -308,7 +328,7 @@ trait HasDrafts
 
     public function updateAsDraft(array $attributes = [], array $options = []): bool
     {
-        if (! $this->exists) {
+        if (!$this->exists) {
             return false;
         }
 
@@ -361,10 +381,10 @@ trait HasDrafts
     public function getPublisherColumns(): array
     {
         return [
-            'id' => defined(static::class.'::PUBLISHER_ID')
+            'id' => defined(static::class . '::PUBLISHER_ID')
                 ? static::PUBLISHER_ID
                 : config('drafts.column_names.publisher_morph_name', 'publisher') . '_id',
-            'type' => defined(static::class.'::PUBLISHER_TYPE')
+            'type' => defined(static::class . '::PUBLISHER_TYPE')
                 ? static::PUBLISHER_TYPE
                 : config('drafts.column_names.publisher_morph_name', 'publisher') . '_type',
         ];
@@ -382,7 +402,7 @@ trait HasDrafts
 
     public function getIsCurrentColumn(): string
     {
-        return defined(static::class.'::IS_CURRENT')
+        return defined(static::class . '::IS_CURRENT')
             ? static::IS_CURRENT
             : config('drafts.column_names.is_current', 'is_current');
     }
@@ -436,7 +456,7 @@ trait HasDrafts
         $query->where($this->getIsCurrentColumn(), false);
     }
 
-    public function scopeExcludeRevision(Builder $query, int | Model $exclude): void
+    public function scopeExcludeRevision(Builder $query, int|Model $exclude): void
     {
         $query->where($this->getKeyName(), '!=', is_int($exclude) ? $exclude : $exclude->getKey());
     }
